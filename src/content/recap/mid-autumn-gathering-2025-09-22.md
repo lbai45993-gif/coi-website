@@ -2,8 +2,8 @@
 title: "Mid-Autumn Gathering Recap"
 date: "2025-09-22"
 gallery:
-  - "/images/recap/1.jpg"
-  - "/images/recap/2.jpg"
+  - "images/recap/1.jpg"
+  - "images/recap/2.jpg"
 summary: "Families and seniors celebrated with music, lanterns, and mooncakes."
 published: true
 ---

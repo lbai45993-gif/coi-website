@@ -8,7 +8,7 @@ location:
   address: "123 Main St, Vancouver, BC"
   geo: [49.2827, -123.1207]
 tags: ["Talk", "Health", "Senior"]
-cover: "/images/events/1.webp"
+cover: "images/events/1.webp"
 summary: "A practical seminar on fall prevention with Q&A."
 a11y_notes: "Accessible entrance and seating available."
 published: true

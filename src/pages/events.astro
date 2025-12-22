@@ -8,8 +8,8 @@ import type { CollectionEntry } from "astro:content";
 type EventEntry = CollectionEntry<"events">;
 
 const BASE = import.meta.env.BASE_URL;
-
-const FALLBACK_COVER = `${BASE}images/events/default-cover.jpg`;
+const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
+const FALLBACK_COVER = "images/events/default-cover.jpg";
 
 
 // 仅取已发布
@@ -51,9 +51,9 @@ const past: EventEntry[] = allEvents
             <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {upcoming.map((e: EventEntry) => {
                 const { slug, data } = e;
-                const cover = data.cover 
-                  ? new URL(data.cover.replace(/^\//, ""), import.meta.env.BASE_URL).toString()
-                  : FALLBACK_COVER;
+                const cover = data.cover
+                  ? toSrc(data.cover)
+                  : toSrc(FALLBACK_COVER);
                 return (
                   <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
                     <a href={`${BASE}events/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
@@ -87,7 +87,7 @@ const past: EventEntry[] = allEvents
             <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {past.map((e: EventEntry) => {
                 const { slug, data } = e;
-                const cover = data.cover ?? FALLBACK_COVER;
+                const cover = data.cover ? toSrc(data.cover) : toSrc(FALLBACK_COVER);
                 return (
                   <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
                     <a href={`${BASE}events/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">

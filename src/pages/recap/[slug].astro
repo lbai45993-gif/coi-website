@@ -6,7 +6,9 @@ import { fmtDate } from "../../lib/date";
 
 type RecapEntry = CollectionEntry<"recap">;
 
-const FALLBACK_COVER = "/images/recap/1.jpg";
+const BASE = import.meta.env.BASE_URL;
+const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
+const FALLBACK_COVER = "images/recap/1.jpg";
 
 export async function getStaticPaths() {
   const entries: RecapEntry[] = await getCollection(
@@ -19,13 +21,11 @@ export async function getStaticPaths() {
   }));
 }
 
-const BASE = import.meta.env.BASE_URL;
-
 const { entry } = Astro.props as { entry: RecapEntry };
 const { data } = entry;
 const { Content } = await entry.render();
 
-const cover = data.gallery?.[0] ?? FALLBACK_COVER;
+const cover = toSrc(data.gallery?.[0] ?? FALLBACK_COVER);
 const pageTitle = `${data.title} | Collage of Inclusion`;
 const pageDesc = data.summary ?? `${data.title} (${fmtDate(data.date)})`;
 ---
@@ -61,7 +61,7 @@ const pageDesc = data.summary ?? `${data.title} (${fmtDate(data.date)})`;
         {data.gallery && data.gallery.length > 1 && (
           <div class="mt-6 grid grid-cols-2 md:grid-cols-3 gap-3">
             {data.gallery.slice(1).map((src: string) => (
-              <img src={src} alt={data.title} class="w-full h-28 object-cover rounded-lg" loading="lazy" />
+              <img src={toSrc(src)} alt={data.title} class="w-full h-28 object-cover rounded-lg" loading="lazy" />
             ))}
           </div>
         )}

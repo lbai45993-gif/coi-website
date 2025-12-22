@@ -6,7 +6,9 @@ import { fmtDate } from "../lib/date";
 
 type RecapEntry = CollectionEntry<"recap">;
 
-const FALLBACK_COVER = "/images/recap/1.jpg";
+const BASE = import.meta.env.BASE_URL;
+const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
+const FALLBACK_COVER = "images/recap/1.jpg";
 
 const allRecap: RecapEntry[] = await getCollection(
   "recap",
@@ -37,10 +39,10 @@ allRecap.sort((a: RecapEntry, b: RecapEntry) => {
           <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {allRecap.map((e: RecapEntry) => {
               const { slug, data } = e;
-              const cover = data.gallery?.[0] ?? FALLBACK_COVER;
+              const cover = toSrc(data.gallery?.[0] ?? FALLBACK_COVER);
               return (
                 <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
-                  <a href={`/recap/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                  <a href={`${BASE}recap/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                     <img src={cover} alt={data.title} class="h-40 w-full object-cover" loading="lazy" />
                     <div class="p-4">
                       <h3 class="text-lg font-semibold line-clamp-2">{data.title}</h3>

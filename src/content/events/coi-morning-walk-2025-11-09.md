@@ -8,7 +8,7 @@ location:
   address: "1200 Stanley Park Dr, Vancouver, BC"
   geo: [49.3004, -123.1394]
 tags: ["Senior", "Fitness", "Outdoor"]
-cover: "/images/events/2.jpg"
+cover: "images/events/2.jpg"
 summary: "Light morning walk by the seawall. All ages welcome; gentle pace."
 a11y_notes: "Wheelchair-friendly route; washrooms nearby."
 published: true
