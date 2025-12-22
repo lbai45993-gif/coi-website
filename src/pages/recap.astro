@@ -1,0 +1,59 @@
+---
+// src/pages/recap.astro
+import Layout from "../layouts/Layout.astro";
+import { getCollection, type CollectionEntry } from "astro:content";
+import { fmtDate } from "../lib/date";
+
+type RecapEntry = CollectionEntry<"recap">;
+
+const FALLBACK_COVER = "/images/recap/1.jpg";
+
+const allRecap: RecapEntry[] = await getCollection(
+  "recap",
+  (entry: RecapEntry) => entry.data.published !== false
+);
+
+// 按日期倒序（新 → 旧）
+allRecap.sort((a: RecapEntry, b: RecapEntry) => {
+  const ad = new Date(a.data.date).getTime();
+  const bd = new Date(b.data.date).getTime();
+  return bd - ad;
+});
+---
+
+<html lang="en">
+  <head>
+    <title>Recap | Collage of Inclusion</title>
+    <meta name="description" content="Event recaps and community highlights." />
+  </head>
+  <body>
+    <Layout>
+      <section class="mx-auto max-w-5xl px-4 py-10">
+        <h1 class="text-3xl font-bold mb-6">Recap</h1>
+
+        {allRecap.length === 0 ? (
+          <p class="text-sm text-slate-600">No recaps yet.</p>
+        ) : (
+          <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {allRecap.map((e: RecapEntry) => {
+              const { slug, data } = e;
+              const cover = data.gallery?.[0] ?? FALLBACK_COVER;
+              return (
+                <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
+                  <a href={`/recap/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <img src={cover} alt={data.title} class="h-40 w-full object-cover" loading="lazy" />
+                    <div class="p-4">
+                      <h3 class="text-lg font-semibold line-clamp-2">{data.title}</h3>
+                      <p class="mt-1 text-sm text-slate-600">{fmtDate(data.date)}</p>
+                      {data.summary && <p class="mt-2 text-sm text-slate-700 line-clamp-3">{data.summary}</p>}
+                    </div>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </Layout>
+  </body>
+</html>

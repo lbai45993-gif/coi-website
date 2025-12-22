@@ -1,0 +1,6 @@
+:root {
+    --coi-primary: #F7E9D7;      /* Warm Beige */
+    --coi-secondary: #87A8A4;    /* Muted Teal */
+    --coi-accent: #E28E6B;       /* Soft Coral */
+}
+@import "tailwindcss";

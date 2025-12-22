@@ -1,0 +1,120 @@
+---
+// src/pages/events/[slug].astro
+import Layout from "../../layouts/Layout.astro";
+import { getCollection, type CollectionEntry } from "astro:content";
+import { fmtDateTimeISO } from "../../lib/date";
+
+type EventEntry = CollectionEntry<"events">;
+
+const FALLBACK_COVER = "/images/events/default-cover.jpg";
+
+export async function getStaticPaths() {
+  const entries: EventEntry[] = await getCollection(
+    "events",
+    (entry: EventEntry) => entry.data.published !== false
+  );
+  return entries.map((entry) => ({
+    params: { slug: entry.slug },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props as { entry: EventEntry };
+const { data } = entry;
+
+// 安全渲染 Markdown（推荐）
+const { Content } = await entry.render();
+
+const cover = data.cover ?? FALLBACK_COVER;
+
+// 地图链接（优先地址，其次地点名）
+const mapQuery = encodeURIComponent(
+  data.location?.address ?? data.location?.name ?? data.title
+);
+const mapHref = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
+
+// SEO / OG
+const pageTitle = `${data.title} | Collage of Inclusion`;
+const pageDesc = data.summary ?? `${data.title} at ${fmtDateTimeISO(data.start)}`;
+---
+
+<html lang="en">
+  <head>
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDesc} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:type" content="event" />
+    <meta property="og:image" content={cover} />
+  </head>
+  <body>
+    <Layout>
+      <article class="mx-auto max-w-3xl px-4 py-10">
+        <a href="/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to Events</a>
+
+        <header class="mt-3">
+          <h1 class="text-3xl font-bold">{data.title}</h1>
+          <p class="mt-2 text-slate-600">
+            {fmtDateTimeISO(data.start)}{data.end ? ` - ${fmtDateTimeISO(data.end)}` : ""}
+          </p>
+
+          {data.location?.name && (
+            <p class="mt-1 text-slate-600">
+              <span class="font-medium">Location:</span>{" "}
+              <a href={mapHref} class="text-indigo-600 hover:underline" target="_blank" rel="noopener">
+                {data.location.name}{data.location.address ? `, ${data.location.address}` : ""}
+              </a>
+            </p>
+          )}
+
+          {data.tags?.length ? (
+            <p class="mt-3 flex flex-wrap gap-2">
+              {data.tags.map((t: string) => (
+                <span class="px-2 py-0.5 text-xs rounded-full bg-slate-100">{t}</span>
+              ))}
+            </p>
+          ) : null}
+        </header>
+
+        <img
+          src={cover}
+          alt={data.title}
+          class="mt-6 w-full rounded-2xl shadow-sm object-cover"
+          loading="eager"
+        />
+
+        {data.a11y_notes && (
+          <div class="mt-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
+            <strong class="block mb-1">Accessibility</strong>
+            <p>{data.a11y_notes}</p>
+          </div>
+        )}
+
+        {data.register_url && (
+          <p class="mt-6">
+            <a
+              href={data.register_url}
+              class="inline-flex items-center rounded-xl px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700"
+              target="_blank" rel="noopener"
+            >
+              Register / Learn more
+            </a>
+          </p>
+        )}
+
+        <div class="prose prose-slate mt-8 max-w-none">
+          <Content />
+        </div>
+
+        {data.facebook_post_url && (
+          <p class="mt-8 text-sm">
+            Facebook:{" "}
+            <a href={data.facebook_post_url} class="text-indigo-600 hover:underline" target="_blank" rel="noopener">
+              {data.facebook_post_url}
+            </a>
+          </p>
+        )}
+      </article>
+    </Layout>
+  </body>
+</html>
