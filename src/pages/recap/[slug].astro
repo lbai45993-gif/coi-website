@@ -19,6 +19,8 @@ export async function getStaticPaths() {
   }));
 }
 
+const BASE = import.meta.env.BASE_URL;
+
 const { entry } = Astro.props as { entry: RecapEntry };
 const { data } = entry;
 const { Content } = await entry.render();
@@ -40,7 +42,8 @@ const pageDesc = data.summary ?? `${data.title} (${fmtDate(data.date)})`;
   <body>
     <Layout>
       <article class="mx-auto max-w-3xl px-4 py-10">
-        <a href="/recap" class="text-sm text-indigo-600 hover:underline">&larr; Back to Recap</a>
+        <!-- <a href="/recap" class="text-sm text-indigo-600 hover:underline">&larr; Back to Recap</a> -->
+         <a href={`${BASE}recap`} class="text-sm text-indigo-600 hover:underline">&larr; Back to Recap</a>
 
         <header class="mt-3">
           <h1 class="text-3xl font-bold">{data.title}</h1>
