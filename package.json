@@ -6,9 +6,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro",
-    "prebuild": "node -e \"console.log('[SANITY_ENV]', {projectId: process.env.PUBLIC_SANITY_PROJECT_ID, dataset: process.env.PUBLIC_SANITY_DATASET, apiVersion: process.env.PUBLIC_SANITY_API_VERSION})\"",
-    "build": "astro build"
+    "astro": "astro"
   },
   "dependencies": {
     "@astrojs/vercel": "^9.0.4",
