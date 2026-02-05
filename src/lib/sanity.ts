@@ -1,18 +1,52 @@
+// src/lib/sanity.ts
 import { createClient } from "@sanity/client";
 import imageUrlBuilder from "@sanity/image-url";
 
-// 1) client 先定义好（顺序很重要）
+// ✅ 同时兼容：Astro 的 import.meta.env（本地/构建） + Vercel 的 process.env（构建时）
+const projectId =
+  import.meta.env.PUBLIC_SANITY_PROJECT_ID ?? process.env.PUBLIC_SANITY_PROJECT_ID;
+
+const dataset =
+  import.meta.env.PUBLIC_SANITY_DATASET ?? process.env.PUBLIC_SANITY_DATASET;
+
+const apiVersion =
+  import.meta.env.PUBLIC_SANITY_API_VERSION ?? process.env.PUBLIC_SANITY_API_VERSION;
+
+// ✅ 早失败：缺了就直接报清楚（比 Vercel log 好排查）
+if (!projectId) throw new Error("Missing PUBLIC_SANITY_PROJECT_ID");
+if (!dataset) throw new Error("Missing PUBLIC_SANITY_DATASET");
+if (!apiVersion) throw new Error("Missing PUBLIC_SANITY_API_VERSION");
+
 export const sanity = createClient({
-  projectId: import.meta.env.PUBLIC_SANITY_PROJECT_ID,
-  dataset: import.meta.env.PUBLIC_SANITY_DATASET,
-  apiVersion: import.meta.env.PUBLIC_SANITY_API_VERSION,
+  projectId,
+  dataset,
+  apiVersion,
   useCdn: true,
 });
 
-// 2) builder 用 client 初始化
 const builder = imageUrlBuilder(sanity);
 
-// 3) 导出 urlFor 给页面用
 export function urlFor(source: any) {
   return builder.image(source);
 }
+
+
+
+// import { createClient } from "@sanity/client";
+// import imageUrlBuilder from "@sanity/image-url";
+
+// // 1) client 先定义好（顺序很重要）
+// export const sanity = createClient({
+//   projectId: import.meta.env.PUBLIC_SANITY_PROJECT_ID,
+//   dataset: import.meta.env.PUBLIC_SANITY_DATASET,
+//   apiVersion: import.meta.env.PUBLIC_SANITY_API_VERSION,
+//   useCdn: true,
+// });
+
+// // 2) builder 用 client 初始化
+// const builder = imageUrlBuilder(sanity);
+
+// // 3) 导出 urlFor 给页面用
+// export function urlFor(source: any) {
+//   return builder.image(source);
+// }
