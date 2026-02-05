@@ -1,61 +1,130 @@
 ---
 // src/pages/recap.astro
 import Layout from "../layouts/Layout.astro";
-import { getCollection, type CollectionEntry } from "astro:content";
 import { fmtDate } from "../lib/date";
-
-type RecapEntry = CollectionEntry<"recap">;
+import { sanity, urlFor } from "../lib/sanity";
 
 const BASE = import.meta.env.BASE_URL;
-const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
+const toHref = (path: string) => (path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`);
 const FALLBACK_COVER = "images/recap/1.jpg";
 
-const allRecap: RecapEntry[] = await getCollection(
-  "recap",
-  (entry: RecapEntry) => entry.data.published !== false
+// const query = /* groq */ `
+//   *[_type == "recap" && published == true]
+//   | order(date desc) {
+//     _id,
+//     title,
+//     "slug": slug.current,
+//     date,
+//     summary,
+//     coverImage,
+//     relatedEvent->{
+//       title,
+//       "slug": slug.current
+//     }
+//   }
+// `;
+const query = /* groq */ `
+  *[_type == "recap" && published == true && defined(slug.current) && slug.current != ""]
+  | order(date desc) {
+    _id,
+    title,
+    "slug": slug.current,
+    date,
+    summary,
+    coverImage,
+    relatedEvent->{
+      title,
+      "slug": slug.current
+    }
+  }
+`;
+
+
+let recaps: any[] = [];
+let errorMsg: string | null = null;
+
+try {
+  recaps = await sanity.fetch(query);
+} catch (err: any) {
+  errorMsg = err?.message ?? String(err);
+}
+
+const coverSrc = (coverImage: any) => {
+  if (coverImage) {
+    return urlFor(coverImage).width(1200).height(630).fit("crop").url();
+  }
+  return toHref(FALLBACK_COVER);
+};
+
+const safeRecaps = recaps.filter((r) => r?.slug && String(r.slug).trim() !== "");
+console.log(
+  `[recap] total=${recaps.length} safe=${safeRecaps.length} slugs=${safeRecaps
+    .map((r) => r.slug)
+    .join(", ")}`
 );
 
-// 按日期倒序（新 → 旧）
-allRecap.sort((a: RecapEntry, b: RecapEntry) => {
-  const ad = new Date(a.data.date).getTime();
-  const bd = new Date(b.data.date).getTime();
-  return bd - ad;
-});
+const pageTitle = "Recap | Collage of Inclusion";
+const pageDesc = "Event recaps and community highlights.";
 ---
 
-<html lang="en">
-  <head>
-    <title>Recap | Collage of Inclusion</title>
-    <meta name="description" content="Event recaps and community highlights." />
-  </head>
-  <body>
-    <Layout>
-      <section class="mx-auto max-w-5xl px-4 py-10">
-        <h1 class="text-3xl font-bold mb-6">Recap</h1>
+<Layout title={pageTitle} description={pageDesc}>
+  <Fragment slot="head">
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:type" content="website" />
+  </Fragment>
 
-        {allRecap.length === 0 ? (
-          <p class="text-sm text-slate-600">No recaps yet.</p>
-        ) : (
-          <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {allRecap.map((e: RecapEntry) => {
-              const { slug, data } = e;
-              const cover = toSrc(data.gallery?.[0] ?? FALLBACK_COVER);
-              return (
-                <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
-                  <a href={`${BASE}recap/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                    <img src={cover} alt={data.title} class="h-40 w-full object-cover" loading="lazy" />
-                    <div class="p-4">
-                      <h3 class="text-lg font-semibold line-clamp-2">{data.title}</h3>
-                      <p class="mt-1 text-sm text-slate-600">{fmtDate(data.date)}</p>
-                      {data.summary && <p class="mt-2 text-sm text-slate-700 line-clamp-3">{data.summary}</p>}
-                    </div>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-    </Layout>
-  </body>
-</html>
+  <section class="mx-auto max-w-5xl px-0 py-2">
+    <h1 class="text-3xl font-bold mb-6">Recap</h1>
+
+    {errorMsg ? (
+      <p class="text-sm text-red-600">Error loading recaps: {errorMsg}</p>
+    ) : safeRecaps.length === 0 ? (
+      <p class="text-sm text-slate-600">No recaps yet.</p>
+    ) : (
+      <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {safeRecaps.map((r) => {
+          const href = `${BASE}recap/${r.slug}`;
+          const cover = coverSrc(r.coverImage);
+
+          return (
+            <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
+              <a
+                href={href}
+                class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                <img
+                  src={cover}
+                  alt={r.title}
+                  class="h-40 w-full object-cover"
+                  loading="lazy"
+                />
+
+                <div class="p-4">
+                  <h3 class="text-lg font-semibold line-clamp-2">{r.title}</h3>
+
+                  {r.date && (
+                    <p class="mt-1 text-sm text-slate-600">{fmtDate(r.date)}</p>
+                  )}
+
+                  {r.relatedEvent?.slug && (
+                    <p class="mt-2 text-xs text-slate-500">
+                      Event:{" "}
+                      <span class="font-medium">
+                        {r.relatedEvent.title ?? r.relatedEvent.slug}
+                      </span>
+                    </p>
+                  )}
+
+                  {r.summary && (
+                    <p class="mt-2 text-sm text-slate-700 line-clamp-3">{r.summary}</p>
+                  )}
+                </div>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    )}
+  </section>
+</Layout>

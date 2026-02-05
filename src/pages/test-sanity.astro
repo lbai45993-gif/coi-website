@@ -1,0 +1,43 @@
+---
+import { sanity } from "../lib/sanity";
+
+const query = /* groq */ `
+  *[_type == "event"]
+  | order(startDate desc)[0...5]{
+    _id,
+    title,
+    "slug": slug.current,
+    startDate,
+    published
+  }
+`;
+
+let events: any[] = [];
+let errorMsg: string | null = null;
+
+try {
+  events = await sanity.fetch(query);
+} catch (err: any) {
+  errorMsg = err?.message ?? String(err);
+}
+---
+
+<html>
+  <head><title>Sanity Test</title></head>
+  <meta charset="utf-8" />
+  <body style="font-family: sans-serif; padding: 24px;">
+    <h1>Sanity 连接测试</h1>
+
+    {errorMsg ? (
+      <>
+        <p style="color: red;">Error: {errorMsg}</p>
+        <p>检查：projectId / dataset / CORS / 是否有 published==true 的 event</p>
+      </>
+    ) : (
+      <>
+        <p>Events fetched: {events.length}</p>
+        <pre>{JSON.stringify(events, null, 2)}</pre>
+      </>
+    )}
+  </body>
+</html>

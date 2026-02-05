@@ -1,22 +1,39 @@
-
 ---
 import Layout from "../layouts/Layout.astro";
-import { getCollection, type CollectionEntry } from "astro:content";
-
-type RecapEntry = CollectionEntry<"recap">;
-
-// 读取最新 3 条 recap（已发布）
-const recaps: RecapEntry[] = (await getCollection(
-  "recap",
-  (e: RecapEntry) => e.data.published !== false
-))
-  .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime())
-  .slice(0, 3);
+import { sanity, urlFor } from "../lib/sanity";
 
 const BASE = import.meta.env.BASE_URL;
-const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
+const toHref = (path: string) => (path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`);
 const FALLBACK_COVER = "images/recap/1.jpg";
 
+// 最新 3 条 recap（published==true）
+const query = /* groq */ `
+  *[_type == "recap" && published == true]
+  | order(date desc)[0...3]{
+    _id,
+    title,
+    "slug": slug.current,
+    date,
+    summary,
+    coverImage
+  }
+`;
+
+let recaps: any[] = [];
+let errorMsg: string | null = null;
+
+try {
+  recaps = await sanity.fetch(query);
+} catch (err: any) {
+  errorMsg = err?.message ?? String(err);
+}
+
+const coverSrc = (coverImage: any) => {
+  if (coverImage) {
+    return urlFor(coverImage).width(1200).height(630).fit("crop").url();
+  }
+  return toHref(FALLBACK_COVER);
+};
 ---
 
 <Layout title="Collage of Inclusion - Home">
@@ -35,7 +52,6 @@ const FALLBACK_COVER = "images/recap/1.jpg";
       <a href={`${BASE}about`} class="inline-block rounded-xl px-4 py-2 border border-black/10 bg-white">
         Learn More
       </a>
-
     </div>
   </section>
 
@@ -43,25 +59,30 @@ const FALLBACK_COVER = "images/recap/1.jpg";
   <section class="mt-10 rounded-2xl bg-white/70 p-8 shadow border border-black/5">
     <div class="flex items-end justify-between mb-4">
       <h2 class="text-2xl font-bold">Recent Recap</h2>
-      <a href={`${BASE}recap`} class="text-sm text-indigo-600 hover:underline">
-       View all →
+      <a href={`${BASE}recap`} class="text-sm border-black/10 hover:underline">
+        View all →
       </a>
-
     </div>
 
-    {recaps.length === 0 ? (
+    {errorMsg ? (
+      <p class="text-sm text-red-600">Error loading recaps: {errorMsg}</p>
+    ) : recaps.length === 0 ? (
       <p class="text-sm text-slate-600">Recaps will appear here after events.</p>
     ) : (
       <ul class="grid gap-6 sm:grid-cols-3">
-        {recaps.map((e) => {
-          const cover = e.data.gallery?.[0] ?? FALLBACK_COVER;
-          const coverSrc = toSrc(cover);
+        {recaps.map((r) => {
+          const href = `${BASE}recap/${r.slug}`;
+          const cover = coverSrc(r.coverImage);
+
           return (
             <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
-              <a href={`${BASE}recap/${e.slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                <img src={coverSrc} alt={e.data.title} class="h-32 w-full object-cover" loading="lazy" />
+              <a
+                href={href}
+                class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                <img src={cover} alt={r.title} class="h-32 w-full object-cover" loading="lazy" />
                 <div class="p-4">
-                  <h3 class="text-base font-semibold line-clamp-2">{e.data.title}</h3>
+                  <h3 class="text-base font-semibold line-clamp-2">{r.title}</h3>
                 </div>
               </a>
             </li>
@@ -71,3 +92,4 @@ const FALLBACK_COVER = "images/recap/1.jpg";
     )}
   </section>
 </Layout>
+

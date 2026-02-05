@@ -1,34 +1,143 @@
 ---
-// src/pages/events/[slug].astro
 import Layout from "../../layouts/Layout.astro";
 import { getCollection, type CollectionEntry } from "astro:content";
 import { fmtDateTimeISO } from "../../lib/date";
+import { sanity, urlFor } from "../../lib/sanity";
+import { toHTML } from "@portabletext/to-html";
+
 
 type EventEntry = CollectionEntry<"events">;
 
 const BASE = import.meta.env.BASE_URL;
 const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
-const FALLBACK_COVER = "images/events/default-cover.jpg";
 
 
 export async function getStaticPaths() {
+  // 1) Markdown entries（你原来的）
   const entries: EventEntry[] = await getCollection(
     "events",
     (entry: EventEntry) => entry.data.published !== false
   );
-  return entries.map((entry) => ({
+
+  const mdPaths = entries.map((entry) => ({
     params: { slug: entry.slug },
-    props: { entry },
+    props: { entry }, // 保持原 props 结构不变
   }));
+
+  // 2) Sanity slugs（published == true）
+  let sanityPaths: any[] = [];
+  try {
+    const sanitySlugs = await sanity.fetch(
+      /* groq */ `*[_type=="event" && published==true]{ "slug": slug.current }`
+    );
+
+    sanityPaths = (sanitySlugs ?? [])
+      .filter((x: any) => x?.slug)
+      .map((x: any) => ({
+        params: { slug: x.slug },
+        // 这里先给 entry: null 占位，避免你后面 Astro.props 直接解构崩掉
+        props: { entry: null, sanitySlug: x.slug },
+      }));
+  } catch {
+    sanityPaths = [];
+  }
+
+  // 3) 合并 + 去重（Sanity 优先）
+  const seen = new Set<string>();
+  const merged = [...sanityPaths, ...mdPaths].filter((p) => {
+    const s = p.params.slug;
+    if (seen.has(s)) return false;
+    seen.add(s);
+    return true;
+  });
+
+  return merged;
 }
 
-const { entry } = Astro.props as { entry: EventEntry };
-const { data } = entry;
 
-// 安全渲染 Markdown（推荐）
-const { Content } = await entry.render();
+// const { entry } = Astro.props as { entry: EventEntry };
+const { entry, sanitySlug } = Astro.props as { entry: EventEntry | null; sanitySlug?: string };
 
-const cover = toSrc(data.cover ?? FALLBACK_COVER);
+let data: any;
+let Content: any = null;
+let sanityContentHtml: string | null = null;
+
+
+if (entry) {
+  data = entry.data;
+  const rendered = await entry.render();
+  Content = rendered.Content;
+} else {
+  // Sanity 详情（最简版：先让页面不 404/不 500）
+  const sanityEvent = await sanity.fetch(
+    /* groq */ `*[_type=="event" && slug.current==$slug][0]{
+      title,
+      startDate,
+      endDate,
+      summary,
+      location,
+      content,
+      coverImage
+    }`,
+    { slug: sanitySlug ?? Astro.params.slug}
+  );
+
+  data = {
+    title: sanityEvent?.title ?? "(Untitled)",
+    start: sanityEvent?.startDate,
+    end: sanityEvent?.endDate,
+    summary: sanityEvent?.summary,
+    location: sanityEvent?.location ? { name: sanityEvent.location } : undefined,
+    tags: [],
+    cover: sanityEvent?.coverImage ? urlFor(sanityEvent.coverImage).width(1600).url() : null,
+
+  };
+
+  sanityContentHtml = sanityEvent?.content
+    ? toHTML(sanityEvent.content, {
+      components: {
+        block: {
+          h2: ({ children }) => 
+            `<h2 class="mt-8 mb-4 text-2xl font-bold tracking-tight text-slate-900">${children}</h2>`,
+          h3: ({ children }) => 
+            `<h3 class="mt-6 mb-3 text-xl font-semibold tracking-tight text-slate-900">${children}</h3>`,
+          blockquote: ({ children }) => 
+            `<blockquote class="my-6 border-l-4 border-slate-300 pl-4 italic text-slate-700">${children}</blockquote>`,
+          normal: ({ children }) =>
+            `<p class="my-4 leading-relaxed text-slate-800">${children}</p>`,
+        },
+
+        marks: {
+          link: ({ children, value }) => {
+            const href = value?.href || "#";
+            const isExternal = /^https?:\/\//.test(href);
+            const rel = isExternal ? "noreferrer noopener" : "";
+            const target = isExternal ? "_blank" : "";
+            return `<a class="text-indigo-600 underline underline-offset-4 hover:text-indigo-700" href="${href}" ${target ? `target="${target}"` : ""} ${rel ? `rel="${rel}"` : ""}>${children}</a>`;
+          },
+        },
+
+        list: {
+          bullet: ({ children }) =>
+            `<ul class="my-4 list-disc pl-6 text-slate-800">${children}</ul>`,
+          number: ({ children }) =>
+            `<ol class="my-4 list-decimal pl-6 text-slate-800">${children}</ol>`,
+        },
+
+        listItem: {
+          bullet: ({ children }) => `<li class="my-1">${children}</li>`,
+          number: ({ children }) => `<li class="my-1">${children}</li>`,
+        },
+      },
+    })
+    : null;
+}
+
+
+
+// const cover = toSrc(data.cover ?? FALLBACK_COVER);
+const cover = data.cover ? toSrc(data.cover) : null;
+
 
 // 地图链接（优先地址，其次地点名）
 const mapQuery = encodeURIComponent(
@@ -43,24 +152,25 @@ const pageDesc = data.summary ?? `${data.title} at ${fmtDateTimeISO(data.start)}
 
 <html lang="en">
   <head>
+    <meta charset="utf-8" />
     <title>{pageTitle}</title>
     <meta name="description" content={pageDesc} />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDesc} />
     <meta property="og:type" content="event" />
-    <meta property="og:image" content={cover} />
+    {cover && <meta property="og:image" content={cover} />}
+
   </head>
   <body>
     <Layout>
       <article class="mx-auto max-w-3xl px-4 py-10">
-        <!-- <a href="/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to Events</a> -->
         <a href={`${BASE}events`} class="text-sm text-indigo-600 hover:underline">&larr; Back to Events</a>
-
         <header class="mt-3">
           <h1 class="text-3xl font-bold">{data.title}</h1>
           <p class="mt-2 text-slate-600">
             {fmtDateTimeISO(data.start)}{data.end ? ` - ${fmtDateTimeISO(data.end)}` : ""}
           </p>
+
 
           {data.location?.name && (
             <p class="mt-1 text-slate-600">
@@ -71,6 +181,18 @@ const pageDesc = data.summary ?? `${data.title} at ${fmtDateTimeISO(data.start)}
             </p>
           )}
 
+          {data.summary && (
+            <section class="mt-4 rounded-xl bg-white/50 ring-1 ring-black/5 p-4">
+              <h2 class="text-sm font-semibold tracking-wide text-slate-700">
+                Event Summary
+              </h2>
+              <p>
+                {data.summary}
+              </p>
+            </section>
+            )
+          }
+
           {data.tags?.length ? (
             <p class="mt-3 flex flex-wrap gap-2">
               {data.tags.map((t: string) => (
@@ -79,13 +201,16 @@ const pageDesc = data.summary ?? `${data.title} at ${fmtDateTimeISO(data.start)}
             </p>
           ) : null}
         </header>
+        
+        {cover && (
+          <img
+            src={cover}
+            alt={data.title}
+            class="mt-6 w-full rounded-2xl shadow-sm object-cover"
+            loading="eager"
+          />
+        )}
 
-        <img
-          src={cover}
-          alt={data.title}
-          class="mt-6 w-full rounded-2xl shadow-sm object-cover"
-          loading="eager"
-        />
 
         {data.a11y_notes && (
           <div class="mt-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
@@ -106,9 +231,13 @@ const pageDesc = data.summary ?? `${data.title} at ${fmtDateTimeISO(data.start)}
           </p>
         )}
 
-        <div class="prose prose-slate mt-8 max-w-none">
-          <Content />
-        </div>
+        {sanityContentHtml ? (
+          <div class="prose prose-slate mt-6 max-w-none prose-p:leading-relaxed" set:html={sanityContentHtml} />         
+        ) : Content ? (
+          <div class="prose prose-slate mt-8 max-w-none">
+            <Content />
+          </div>
+        ): null}
 
         {data.facebook_post_url && (
           <p class="mt-8 text-sm">

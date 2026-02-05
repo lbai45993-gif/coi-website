@@ -4,6 +4,7 @@ import Layout from "../layouts/Layout.astro";
 import { getCollection } from "astro:content";
 import { fmtDateTimeISO, isUpcoming } from "../lib/date";
 import type { CollectionEntry } from "astro:content";
+import { sanity, urlFor } from "../lib/sanity";
 
 type EventEntry = CollectionEntry<"events">;
 
@@ -12,32 +13,91 @@ const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.
 const FALLBACK_COVER = "images/events/default-cover.jpg";
 
 
-// 仅取已发布
-const allEvents: EventEntry[] = await getCollection(
+// ===== 1) Sanity query（只取 published == true）=====
+const query = /* groq */ `
+  *[_type == "event" && published == true]
+  | order(startDate asc) {
+    _id,
+    title,
+    "slug": slug.current,
+    startDate,
+    endDate,
+    summary,
+    location,
+    coverImage
+  }
+  `;
+
+// ===== 2) Fetch from Sanity (Empty if failed) =====
+let sanityRaw: any[] = [];
+try {
+  sanityRaw = await sanity.fetch(query);
+} catch {
+  sanityRaw = [];
+}
+
+
+// ===== 3) Markdown（Original Souce）=====
+const mdEvents: EventEntry[] = await getCollection(
   "events",
   (entry: EventEntry) => entry.data.published !== false
-);
+)
 
-// 时间升序（早 → 晚）
-allEvents.sort((a: EventEntry, b: EventEntry) => {
+// ===== 4) 把 Sanity event 映射成“像 EventEntry 一样”的结构 =====
+const sanityEventsLike: any[] = sanityRaw
+.filter((e) => e?.slug)
+.map((e) => ({
+  slug: e.slug ?? "",
+  data: {
+    title: e.title,
+    // 你的页面下面用的是 data.start / data.end
+    start: e.startDate,
+    end: e.endDate,
+
+    // 你的页面下面用 data.location?.name，所以这里做成 {name}
+    location: e.location ? { name: e.location } : undefined,
+
+    summary: e.summary,
+
+    // 你页面下面用 data.cover（string path），Sanity 这边先不处理图片，先用 fallback
+    // 之后我们再专门做 coverImage -> URL（下一步再做）
+    cover: e.coverImage 
+      ? urlFor(e.coverImage).width(1200).url()
+      : null,
+
+    tags: [],
+    published: true,
+
+  },
+}));
+
+// ===== 5) 選擇數據源 =====
+// 目前优先用 Sanity 的，有数据就用 Sanity 的，没有就用 Markdown 的
+const allEvents: any[] = sanityEventsLike.length > 0 ? sanityEventsLike : mdEvents;
+
+
+// ===== 6) 排序 (用 date.start) =====
+allEvents.sort((a: any, b: any) => {
   const ad = new Date(a.data.start).getTime();
   const bd = new Date(b.data.start).getTime();
   return ad - bd;
-});
+})
 
-// 分组
-const upcoming: EventEntry[] = allEvents.filter((e: EventEntry) =>
-  isUpcoming(e.data.end, e.data.start)
-);
 
-const past: EventEntry[] = allEvents
-  .filter((e: EventEntry) => !isUpcoming(e.data.end, e.data.start))
-  .sort((a: EventEntry, b: EventEntry) => new Date(b.data.start).getTime() - new Date(a.data.start).getTime());
+// ===== 7) 分組 =====
+const upcoming: any[] = allEvents.filter((e: any) => isUpcoming(e.data.end, e.data.start));
+
+const past: any[] = allEvents.
+  filter((e: any) => !isUpcoming(e.data.end, e.data.start)).
+  sort((a: any, b: any) => 
+    new Date(b.data.start).getTime() - new Date(a.data.start).getTime()
+  );
 ---
 
 <html lang="en">
   <head>
     <title>Events | Collage of Inclusion</title>
+    <meta charset="utf-8" />
     <meta name="description" content="Browse community events and activities." />
   </head>
   <body>
@@ -51,13 +111,12 @@ const past: EventEntry[] = allEvents
             <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {upcoming.map((e: EventEntry) => {
                 const { slug, data } = e;
-                const cover = data.cover
-                  ? toSrc(data.cover)
-                  : toSrc(FALLBACK_COVER);
+                const cover = data.cover ?? toSrc(FALLBACK_COVER);
                 return (
                   <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
                     <a href={`${BASE}events/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                       <img src={cover} alt={data.title} class="h-40 w-full object-cover" loading="lazy" />
+                      
                       <div class="p-4">
                         <h3 class="text-lg font-semibold line-clamp-2">{data.title}</h3>
                         <p class="mt-1 text-sm text-slate-600">
@@ -87,7 +146,8 @@ const past: EventEntry[] = allEvents
             <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {past.map((e: EventEntry) => {
                 const { slug, data } = e;
-                const cover = data.cover ? toSrc(data.cover) : toSrc(FALLBACK_COVER);
+                // const cover = data.cover ? toSrc(data.cover) : toSrc(FALLBACK_COVER);
+                const cover = toSrc(data.cover ?? FALLBACK_COVER);
                 return (
                   <li class="rounded-2xl shadow-sm overflow-hidden bg-white">
                     <a href={`${BASE}events/${slug}`} class="block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">

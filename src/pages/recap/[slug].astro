@@ -1,84 +1,187 @@
 ---
 // src/pages/recap/[slug].astro
 import Layout from "../../layouts/Layout.astro";
-import { getCollection, type CollectionEntry } from "astro:content";
 import { fmtDate } from "../../lib/date";
-
-type RecapEntry = CollectionEntry<"recap">;
+import { sanity, urlFor } from "../../lib/sanity";
+import { toHTML } from "@portabletext/to-html";
 
 const BASE = import.meta.env.BASE_URL;
-const toSrc = (path: string) => path.startsWith("http") ? path : `${BASE}${path.replace(/^\//, "")}`;
-const FALLBACK_COVER = "images/recap/1.jpg";
 
+const portableTextComponents = {
+  block: {
+    h2: ({ children }: any) => `<h2 class="mt-8 text-2xl font-bold">${children}</h2>`,
+    h3: ({ children }: any) => `<h3 class="mt-6 text-xl font-semibold">${children}</h3>`,
+    blockquote: ({ children }: any) =>
+      `<blockquote class="my-6 border-l-4 border-slate-300 pl-4 italic text-slate-700">${children}</blockquote>`,
+    normal: ({ children }: any) => `<p class="my-4 leading-7 text-slate-800">${children}</p>`,
+  },
+  list: {
+    bullet: ({ children }: any) => `<ul class="mt-4 list-disc pl-6">${children}</ul>`,
+    number: ({ children }: any) => `<ol class="mt-4 list-decimal pl-6">${children}</ol>`,
+  },
+  listItem: {
+    bullet: ({ children }: any) => `<li class="mt-2">${children}</li>`,
+    number: ({ children }: any) => `<li class="mt-2">${children}</li>`,
+  },
+  marks: {
+    link: ({ children, value }: any) => {
+      const href = value?.href || "#";
+      const isExternal = href.startsWith("http");
+      const rel = isExternal ? ` rel="noreferrer noopener"` : "";
+      const target = isExternal ? ` target="_blank"` : "";
+      return `<a class="text-indigo-600 hover:underline" href="${href}"${target}${rel}>${children}</a>`;
+    },
+  },
+};
+
+// 1) Static paths from Sanity
+// export async function getStaticPaths() {
+//   const slugsQuery = /* groq */ `
+//     *[_type == "recap" && published == true && defined(slug.current)][]{
+//       "slug": slug.current
+//     }
+//   `;
+//   const items: Array<{ slug: string }> = await sanity.fetch(slugsQuery);
+//   return items.map((it) => ({ params: { slug: it.slug } }));
+// }
 export async function getStaticPaths() {
-  const entries: RecapEntry[] = await getCollection(
-    "recap",
-    (entry: RecapEntry) => entry.data.published !== false
-  );
-  return entries.map((entry) => ({
-    params: { slug: entry.slug },
-    props: { entry },
-  }));
+  const slugsQuery = /* groq */ `
+    *[_type == "recap" && published == true && defined(slug.current) && slug.current != ""]
+    | order(date desc){
+      "slug": slug.current
+    }
+  `;
+
+  const items: Array<{ slug: string }> = await sanity.fetch(slugsQuery);
+  return items.map((it) => ({ params: { slug: it.slug } }));
 }
 
-const { entry } = Astro.props as { entry: RecapEntry };
-const { data } = entry;
-const { Content } = await entry.render();
 
-const cover = toSrc(data.gallery?.[0] ?? FALLBACK_COVER);
-const pageTitle = `${data.title} | Collage of Inclusion`;
-const pageDesc = data.summary ?? `${data.title} (${fmtDate(data.date)})`;
+const { slug } = Astro.params;
+
+// 2) Fetch recap detail
+const query = /* groq */ `
+  *[_type == "recap" && published == true && slug.current == $slug][0]{
+    _id,
+    title,
+    "slug": slug.current,
+    date,
+    summary,
+    coverImage,
+    gallery[]{
+      image,
+      caption,
+      alt
+    },
+    relatedEvent->{
+      title,
+      "slug": slug.current
+    },
+    content
+  }
+`;
+
+let recap: any = null;
+let errorMsg: string | null = null;
+
+try {
+  recap = await sanity.fetch(query, { slug });
+} catch (err: any) {
+  errorMsg = err?.message ?? String(err);
+}
+
+if (!errorMsg && !recap) {
+  throw new Error("Recap not found");
+}
+
+// Image strategy: no coverImage => show nothing
+const cover: string | null =
+  recap?.coverImage ? urlFor(recap.coverImage).width(1200).height(630).fit("crop").url() : null;
+
+// Gallery items
+const galleryItems: Array<{ url: string; alt: string; caption?: string }> =
+  Array.isArray(recap?.gallery)
+    ? recap.gallery
+        .map((g: any) => {
+          const url = g?.image ? urlFor(g.image).width(1400).height(1000).fit("max").url() : null;
+          if (!url) return null;
+          return { url, alt: g?.alt ?? recap.title, caption: g?.caption };
+        })
+        .filter(Boolean)
+    : [];
+
+// PortableText -> HTML
+const contentHtml =
+  recap?.content ? toHTML(recap.content, { components: portableTextComponents as any }) : "";
+
+const pageTitle = `${recap.title} | Collage of Inclusion`;
+const pageDesc = recap.summary ?? `${recap.title} (${fmtDate(recap.date)})`;
 ---
 
-<html lang="en">
-  <head>
-    <title>{pageTitle}</title>
-    <meta name="description" content={pageDesc} />
+<Layout title={pageTitle} description={pageDesc}>
+  <Fragment slot="head">
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDesc} />
     <meta property="og:type" content="article" />
-    <meta property="og:image" content={cover} />
-  </head>
-  <body>
-    <Layout>
-      <article class="mx-auto max-w-3xl px-4 py-10">
-        <!-- <a href="/recap" class="text-sm text-indigo-600 hover:underline">&larr; Back to Recap</a> -->
-         <a href={`${BASE}recap`} class="text-sm text-indigo-600 hover:underline">&larr; Back to Recap</a>
+    {cover && <meta property="og:image" content={cover} />}
+  </Fragment>
+  <article class="mx-auto max-w-3xl px-0 py-2">
+    <a href={`${BASE}recap`} class="text-sm text-indigo-600 hover:underline">
+      &larr; Back to Recap
+    </a>
 
+    {errorMsg ? (
+      <p class="mt-6 text-sm text-red-600">Error loading recap: {errorMsg}</p>
+    ) : (
+      <>
         <header class="mt-3">
-          <h1 class="text-3xl font-bold">{data.title}</h1>
-          {data.date && <p class="mt-2 text-slate-600">{fmtDate(data.date)}</p>}
+          <h1 class="text-3xl font-bold">{recap.title}</h1>
+          {recap.date && <p class="mt-2 text-slate-600">{fmtDate(recap.date)}</p>}
+
+          {recap.relatedEvent?.slug && (
+            <p class="mt-2 text-sm">
+              Event:{" "}
+              <a
+                href={`${BASE}events/${recap.relatedEvent.slug}`}
+                class="text-indigo-600 hover:underline"
+              >
+                {recap.relatedEvent.title ?? recap.relatedEvent.slug}
+              </a>
+            </p>
+          )}
+
+          {recap.summary && <p class="mt-4 text-slate-800">{recap.summary}</p>}
         </header>
 
-        <img
-          src={cover}
-          alt={data.title}
-          class="mt-6 w-full rounded-2xl shadow-sm object-cover"
-          loading="eager"
-        />
+        {cover && (
+          <img
+            src={cover}
+            alt={recap.title}
+            class="mt-6 w-full rounded-2xl shadow-sm object-cover"
+            loading="eager"
+          />
+        )}
 
-        {/* 画廊（若有多图） */}
-        {data.gallery && data.gallery.length > 1 && (
+        {/* Gallery: from 2nd image onward */}
+        {galleryItems.length > 1 && (
           <div class="mt-6 grid grid-cols-2 md:grid-cols-3 gap-3">
-            {data.gallery.slice(1).map((src: string) => (
-              <img src={toSrc(src)} alt={data.title} class="w-full h-28 object-cover rounded-lg" loading="lazy" />
+            {galleryItems.slice(1).map((g) => (
+              <img
+                src={g.url}
+                alt={g.alt}
+                class="w-full h-28 object-cover rounded-lg"
+                loading="lazy"
+              />
             ))}
           </div>
         )}
 
         <div class="prose prose-slate mt-8 max-w-none">
-          <Content />
+          {contentHtml ? <Fragment set:html={contentHtml} /> : null}
         </div>
+      </>
+    )}
+  </article>
+</Layout>
 
-        {data.facebook_post_url && (
-          <p class="mt-8 text-sm">
-            Facebook:{" "}
-            <a href={data.facebook_post_url} class="text-indigo-600 hover:underline" target="_blank" rel="noopener">
-              {data.facebook_post_url}
-            </a>
-          </p>
-        )}
-      </article>
-    </Layout>
-  </body>
-</html>
+
